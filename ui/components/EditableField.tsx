@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation } from "urql";
-import { Tooltip } from "react-tippy";
+import Tooltip from "@tippyjs/react";
+
 import * as yup from "yup";
 import { yupResolver } from "@hookform/resolvers";
 
@@ -10,6 +11,7 @@ import Button from "components/Button";
 import IconButton from "components/IconButton";
 import { EditIcon } from "components/Icons";
 import Markdown from "./Markdown";
+import { FormattedMessage, useIntl } from "react-intl";
 
 const EditableField = ({
   defaultValue,
@@ -22,15 +24,32 @@ const EditableField = ({
   maxLength = undefined,
   required = false,
   className = "",
+}: {
+  defaultValue: string;
+  name: string;
+  label: string;
+  canEdit: boolean;
+  MUTATION: any;
+  placeholder: string;
+  variables: any;
+  maxLength?: number;
+  required?: boolean;
+  className?: string;
 }) => {
   const [{ fetching: loading }, mutation] = useMutation(MUTATION);
+  const intl = useIntl();
 
   const schema = useMemo(() => {
-    const maxField = yup.string().max(maxLength ?? Infinity, "Too long");
+    const maxField = yup
+      .string()
+      .max(
+        maxLength ?? Infinity,
+        intl.formatMessage({ defaultMessage: "Too long" })
+      );
     return yup.object().shape({
       [name]: required ? maxField.required("Required") : maxField,
     });
-  }, [maxLength, required, name]);
+  }, [maxLength, required, name, intl]);
 
   const { handleSubmit, register, setValue, errors } = useForm({
     resolver: yupResolver(schema),
@@ -70,9 +89,9 @@ const EditableField = ({
               target="_/blank"
               className="text-blue-600 hover:text-blue-800"
             >
-              Markdown
+              <FormattedMessage defaultMessage="Markdown" />
             </a>{" "}
-            allowed
+            <FormattedMessage defaultMessage="allowed" />
           </div>
           <div className="flex">
             <Button
@@ -80,10 +99,10 @@ const EditableField = ({
               variant="secondary"
               className="mr-2"
             >
-              Cancel
+              <FormattedMessage defaultMessage="Cancel" />
             </Button>
             <Button type="submit" loading={loading}>
-              Save
+              <FormattedMessage defaultMessage="Save" />
             </Button>
           </div>
         </div>
@@ -95,7 +114,14 @@ const EditableField = ({
         <Markdown source={defaultValue} />
         {canEdit && (
           <div className="absolute top-0 right-0">
-            <Tooltip title={`Edit ${name}`} position="bottom" size="small">
+            <Tooltip
+              content={intl.formatMessage(
+                { defaultMessage: `Edit {name}` },
+                { name: name }
+              )}
+              placement="bottom"
+              arrow={false}
+            >
               <IconButton onClick={() => setEditing(true)}>
                 <EditIcon className="h-6 w-6" />
               </IconButton>

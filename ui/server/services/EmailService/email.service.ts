@@ -45,7 +45,7 @@ function quotedSection(html: string) {
   return `<div style="background-color: ${tailwindHsl.anthracit[200]}; padding: 1px 15px;">${html}</div>`;
 }
 
-const footer = `<div><i>Cobudget helps groups collaboratively ideate, gather and distribute funds to projects that matter to them. <a href="https://guide.cobudget.co/">Discover how it works.</a></i></div>
+const footer = `<div><i>Cobudget helps groups collaboratively ideate, gather and distribute funds to projects that matter to them. <a href="https://cobudget.helpscoutdocs.com/">Discover how it works.</a></i></div>
 <br/>
 <div><a href="${appLink(
   "/settings"
@@ -395,11 +395,31 @@ export default {
       <br/><br/>
       Decide now which dreams to allocate your funds to by checking out the current proposals in <a href="${appLink(
         `/${group.slug}/${round.slug}`
-      )}">${escape(round.title)}</a>.
-      <br/><br/>
-      ${footer}
-      `,
+      )}">${escape(round.title)}</a>. <br/><br/>${footer}`,
     });
+  },
+  bulkAllocateNotification: async ({ roundId, membersData }) => {
+    const round = await prisma.round.findUnique({
+      where: { id: roundId },
+      include: { group: true },
+    });
+    const emails = membersData
+      .filter((member) => member.emailSettings?.allocatedToYou ?? true)
+      .filter((member) => member.adjustedAmount > 0)
+      .map((member) => {
+        return {
+          to: member.user.email,
+          subject: `${member.user.name}, you’ve received funds to spend in ${round.title}!`,
+          html: `You have received ${member.adjustedAmount / 100} ${
+            round.currency
+          } in ${escape(
+            round.title
+          )}. <br/><br/>Decide now which buckets to allocate your funds to by checking out the current proposals in <a href="${appLink(
+            `/${round.group.slug}/${round.slug}`
+          )}">${escape(round.title)}</a>.<br/><br/> ${footer}`,
+        };
+      });
+    await sendEmails(emails);
   },
   cancelFundingNotification: async ({
     bucket,

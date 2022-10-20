@@ -3,6 +3,16 @@ import Header from "./Header";
 import { FormattedMessage } from "react-intl";
 import "../lib/beacon";
 import { supportedLangs } from "lang";
+import { useQuery, gql } from "urql";
+
+const getLanguageProgressQuery = gql`
+  query LanguageProgressPage {
+    languageProgressPage {
+      code
+      percentage
+    }
+  }
+`;
 
 const LinkOut = ({ href, children }) => {
   return (
@@ -16,24 +26,41 @@ const Layout = ({
   children,
   currentUser,
   fetchingUser,
-  openModal,
   group,
   round,
   bucket,
   dir,
   locale,
   changeLocale,
+  ss,
 }) => {
+  const [
+    { data: languageProgressResponse, fetching: languageProgressLoading },
+  ] = useQuery({ query: getLanguageProgressQuery });
+
+  const languageProgress = React.useMemo(() => {
+    try {
+      const progress = {};
+      languageProgressResponse.languageProgressPage.forEach(
+        (p) => (progress[p.code] = p.percentage)
+      );
+      progress.en = 100;
+      return progress;
+    } catch (err) {
+      return {};
+    }
+  }, [languageProgressResponse]);
+
   return (
     <div className="flex flex-col min-h-screen" id="hello-container" dir={dir}>
       <div>
         <Header
           currentUser={currentUser}
           fetchingUser={fetchingUser}
-          openModal={openModal}
           group={group}
           round={round}
           bucket={bucket}
+          ss={ss}
         />
         {children}
       </div>
@@ -58,15 +85,21 @@ const Layout = ({
         </div>
         <div className="space-x-6">
           {process.env.PRIVACY_POLICY_URL && (
-            <LinkOut href="/privacy-policy">Privacy Policy</LinkOut>
+            <LinkOut href="/privacy-policy">
+              <FormattedMessage defaultMessage="Privacy Policy" />
+            </LinkOut>
           )}
           {process.env.TERMS_URL && (
-            <LinkOut href="/terms-and-conditions">Terms and Conditions</LinkOut>
+            <LinkOut href="/terms-and-conditions">
+              <FormattedMessage defaultMessage="Terms and Conditions" />
+            </LinkOut>
           )}
           <select value={locale} onChange={(e) => changeLocale(e.target.value)}>
             {supportedLangs.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {languageProgressLoading || !languageProgress[option.value]
+                  ? option.label
+                  : option.label + " (" + languageProgress[option.value] + "%)"}
               </option>
             ))}
           </select>

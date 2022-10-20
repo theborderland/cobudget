@@ -3,10 +3,25 @@ import { stringToColor } from "../utils/stringToHslColor";
 import ProgressBar from "./ProgressBar";
 import { CoinIcon, CommentIcon } from "./Icons";
 import Label from "./Label";
+import { FormattedMessage, FormattedNumber, useIntl } from "react-intl";
+import getStatusColor from "utils/getStatusColor";
 
 const BucketCard = ({ bucket, round }) => {
+  const intl = useIntl();
+
+  const statusList = {
+    PENDING_APPROVAL: intl.formatMessage({
+      defaultMessage: "Pending Approval",
+    }),
+    OPEN_FOR_FUNDING: intl.formatMessage({ defaultMessage: "Funding Open" }),
+    FUNDED: intl.formatMessage({ defaultMessage: "Funded" }),
+    CANCELED: intl.formatMessage({ defaultMessage: "Canceled" }),
+    COMPLETED: intl.formatMessage({ defaultMessage: "Completed" }),
+    ARCHIVED: intl.formatMessage({ defaultMessage: "Archived" }),
+  };
+
   const showFundingStats =
-    (bucket.minGoal || bucket.maxGoal) && bucket.approved && !bucket.canceled;
+    !!(bucket.minGoal || bucket.maxGoal) && bucket.approved && !bucket.canceled;
   return (
     <div className="relative bg-white rounded-lg shadow-md overflow-hidden flex flex-col w-full hover:shadow-lg transition-shadow duration-75 ease-in-out">
       {bucket.images?.length ? (
@@ -17,8 +32,18 @@ const BucketCard = ({ bucket, round }) => {
       ) : (
         <div className={`w-full h-48 bg-${stringToColor(bucket.title)}`} />
       )}
-      {!bucket.published && (
-        <Label className="absolute right-0 m-2">Unpublished</Label>
+      {!bucket.published ? (
+        <Label className="absolute right-0 m-2 bg-app-gray">
+          <FormattedMessage defaultMessage="Unpublished" />
+        </Label>
+      ) : (
+        <Label
+          className={
+            "absolute right-0 m-2 " + getStatusColor(bucket.status, bucket)
+          }
+        >
+          {statusList[bucket.status]}
+        </Label>
       )}
       <div className="p-4 pt-3 flex-grow flex flex-col justify-between">
         <div className="mb-2">
@@ -37,7 +62,7 @@ const BucketCard = ({ bucket, round }) => {
             />
           )}
 
-          <div className="flex space-x-3 mt-1">
+          <div className="flex gap-x-3 mt-1">
             {showFundingStats && (
               <div className="flex items-center text-gray-700">
                 <CoinIcon className="w-5 h-5" />
@@ -59,6 +84,17 @@ const BucketCard = ({ bucket, round }) => {
                   {bucket.noOfComments}
                 </span>
               </div>
+            )}
+
+            {showFundingStats && (
+              <span className="ml-auto">
+                <FormattedNumber
+                  value={bucket.minGoal / 100}
+                  style="currency"
+                  currencyDisplay={"symbol"}
+                  currency={round.currency}
+                />
+              </span>
             )}
           </div>
         </div>
