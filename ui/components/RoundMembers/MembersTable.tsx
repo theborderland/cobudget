@@ -364,10 +364,6 @@ const RoundMembersTable = ({
   searchString,
 }) => {
   const [bulkAllocateModalOpen, setBulkAllocateModalOpen] = useState(false);
-  const [pageVariables, setPageVariables] = useState([
-    { limit: 30, offset: 0 },
-  ]);
-
   const intl = useIntl();
 
   const [pageVariables, setPageVariables] = useState([
@@ -456,4 +452,3 @@ const RoundMembersTable = ({
 };
 
 export default RoundMembersTable;
-
