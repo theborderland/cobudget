@@ -12,7 +12,11 @@ export default function StatusFilter({
   const items = [
     {
       type: "PENDING_APPROVAL",
-      placeholder: "Pending approval",
+      placeholder: "Draft",
+    },
+    {
+      type: "IDEA",
+      placeholder: "Idea",
     },
     {
       type: "OPEN_FOR_FUNDING",
@@ -31,7 +35,7 @@ export default function StatusFilter({
       placeholder: "Canceled",
     },
   ]
-    .filter((item) => !!bucketStatusCount[item.type])
+    //.filter((item) => !!bucketStatusCount[item.type])
     .map((item) => ({
       type: item.type,
       value: statusFilter.includes && statusFilter.includes(item.type),
@@ -39,7 +43,7 @@ export default function StatusFilter({
     }));
 
   return (
-    <div className={className}>
+    <div className={className} data-testid="bucket-status-filter-select">
       <Popover className="relative">
         <Popover.Button
           className={`w-full flex items-center bg-gray-100 border-3 border-gray-100 rounded py-3 px-4 pr-8 relative focus:outline-none focus:ring focus:ring-${color}`}
@@ -55,7 +59,10 @@ export default function StatusFilter({
         <Popover.Panel className="absolute z-10 w-56 bg-white p-4 rounded-lg shadow mt-2">
           <ul className="space-y-1">
             {items.map((item) => (
-              <li key={item.type}>
+              <li
+                key={item.type}
+                data-testid={`bucket-filter-options-${item.type}`}
+              >
                 <label className="flex space-x-1.5 items-center">
                   <input
                     type="checkbox"
@@ -63,12 +70,19 @@ export default function StatusFilter({
                     onChange={() => {
                       if (item.value) {
                         // remove from filter
-                        onChangeStatus(
-                          statusFilter.filter((status) => status !== item.type)
+                        const statusList = statusFilter.filter(
+                          (status) => status !== item.type
                         );
+                        if (statusList.length === 0) {
+                          onChangeStatus(["HIDE_ALL"]);
+                        } else onChangeStatus(statusList);
                       } else {
                         // add to filter
-                        onChangeStatus([...statusFilter, item.type]);
+                        const statusList = [...statusFilter, item.type];
+                        if (statusList.indexOf("HIDE_ALL") > -1) {
+                          statusList.splice(statusList.indexOf("HIDE_ALL"), 1);
+                        }
+                        onChangeStatus(statusList);
                       }
                     }}
                   ></input>

@@ -11,8 +11,7 @@ import {
   Menu,
   MenuItem,
 } from "@material-ui/core";
-import { Tooltip } from "react-tippy";
-import { FormattedMessage, useIntl, FormattedNumber } from "react-intl";
+import Tooltip from "@tippyjs/react";
 import { INVITE_ROUND_MEMBERS_MUTATION } from "../InviteMembersModal";
 import { gql, useMutation, useQuery } from "urql";
 
@@ -23,7 +22,8 @@ import Avatar from "components/Avatar";
 import MoreVertIcon from "@material-ui/icons/MoreVert";
 import AllocateModal from "./AllocateModal";
 import toast from "react-hot-toast";
-import { debounce } from "lodash"
+import { FormattedMessage, useIntl, FormattedNumber } from "react-intl";
+import { debounce } from "lodash";
 import LoadMore, { PortaledLoadMore } from "components/LoadMore";
 
 export const MEMBERS_QUERY = gql`
@@ -62,8 +62,17 @@ export const MEMBERS_QUERY = gql`
   }
 `;
 
-const Page = ({ variables, round, isLastPage, onLoadMore, deleteMember, updateMember, isAdmin, searchString }) => {
-  const [{ data, fetching, error }, searchMembers] = useQuery({
+const Page = ({
+  variables,
+  round,
+  isLastPage,
+  onLoadMore,
+  deleteMember,
+  updateMember,
+  isAdmin,
+  searchString,
+}) => {
+  const [{ data, fetching, error }, executeQuery] = useQuery({
     query: MEMBERS_QUERY,
     variables: {
       roundId: round.id,
@@ -77,8 +86,8 @@ const Page = ({ variables, round, isLastPage, onLoadMore, deleteMember, updateMe
   const moreExist = data?.membersPage?.moreExist || false;
 
   const debouncedSearchMembers = useMemo(() => {
-    return debounce(searchMembers, 300, { leading: true });
-  }, [searchMembers]);
+    return debounce(executeQuery, 300, { leading: true });
+  }, [executeQuery]);
 
   const items = useMemo(() => {
     const members = data?.membersPage?.members || [];
@@ -92,23 +101,36 @@ const Page = ({ variables, round, isLastPage, onLoadMore, deleteMember, updateMe
     debouncedSearchMembers();
   }, [debouncedSearchMembers]);
 
-  return <>{items.map((member) => <Row key={member.id} member={member} deleteMember={deleteMember} updateMember={updateMember} round={round} isAdmin={isAdmin} />)}
-
-    {isLastPage && moreExist && (
-      <PortaledLoadMore>
-        <LoadMore
-          moreExist={moreExist}
-          loading={fetching}
-          onClick={() =>
-            onLoadMore({
-              limit: variables.limit,
-              offset: variables.offset + items.length,
-            })
-          }
+  return (
+    <>
+      {items.map((member) => (
+        <Row
+          key={member.id}
+          member={member}
+          deleteMember={deleteMember}
+          updateMember={updateMember}
+          round={round}
+          isAdmin={isAdmin}
         />
-      </PortaledLoadMore>
-    )}</>
-}
+      ))}
+
+      {isLastPage && moreExist && (
+        <PortaledLoadMore>
+          <LoadMore
+            moreExist={moreExist}
+            loading={fetching}
+            onClick={() =>
+              onLoadMore({
+                limit: variables.limit,
+                offset: variables.offset + items.length,
+              })
+            }
+          />
+        </PortaledLoadMore>
+      )}
+    </>
+  );
+};
 
 const ActionsDropdown = ({ roundId, updateMember, deleteMember, member }) => {
   const [anchorEl, setAnchorEl] = useState(null);
@@ -127,14 +149,18 @@ const ActionsDropdown = ({ roundId, updateMember, deleteMember, member }) => {
   };
   return (
     <>
-      <MuiIconButton
-        aria-label={intl.formatMessage({ defaultMessage: "more" })}
-        aria-controls="simple-menu"
-        aria-haspopup="true"
-        onClick={handleClick}
+      <span
+        data-testid={`participant-action-button-${member.email.split("@")[0]}`}
       >
-        <MoreVertIcon />
-      </MuiIconButton>
+        <MuiIconButton
+          aria-label={intl.formatMessage({ defaultMessage: "more" })}
+          aria-controls="simple-menu"
+          aria-haspopup="true"
+          onClick={handleClick}
+        >
+          <MoreVertIcon />
+        </MuiIconButton>
+      </span>
       <Menu
         id="simple-menu"
         anchorEl={anchorEl}
@@ -190,42 +216,47 @@ const ActionsDropdown = ({ roundId, updateMember, deleteMember, member }) => {
           {member.isModerator ? "Remove moderator" : "Make moderator"}
         </MenuItem>
         <Tooltip
-          title={intl.formatMessage({
+          content={intl.formatMessage({
             defaultMessage:
               "You can only remove a round participant with 0 balance",
           })}
           disabled={member.balance === 0}
+          arrow={false}
         >
-          <MenuItem
-            color="error.main"
-            disabled={member.balance !== 0}
-            onClick={() => {
-              if (
-                confirm(
-                  intl.formatMessage(
-                    {
-                      defaultMessage:
-                        "Are you sure you would like to delete membership from user with email {email}?",
-                    },
-                    { email: member.email }
+          <span
+            data-testid={`delete-participant-${member.email.split("@")[0]}`}
+          >
+            <MenuItem
+              color="error.main"
+              disabled={member.balance !== 0}
+              onClick={() => {
+                if (
+                  confirm(
+                    intl.formatMessage(
+                      {
+                        defaultMessage:
+                          "Are you sure you would like to delete membership from user with email {email}?",
+                      },
+                      { email: member.email }
+                    )
                   )
                 )
-              )
-                deleteMember({ roundId, memberId: member.id }).then(
-                  ({ error }) => {
-                    if (error) {
-                      console.error(error);
-                      toast.error(error.message);
+                  deleteMember({ roundId, memberId: member.id }).then(
+                    ({ error }) => {
+                      if (error) {
+                        console.error(error);
+                        toast.error(error.message);
+                      }
+                      handleClose();
                     }
-                    handleClose();
-                  }
-                );
-            }}
-          >
-            <Box color="error.main">
-              <FormattedMessage defaultMessage="Delete" />
-            </Box>
-          </MenuItem>
+                  );
+              }}
+            >
+              <Box color="error.main">
+                <FormattedMessage defaultMessage="Delete" />
+              </Box>
+            </MenuItem>
+          </span>
         </Tooltip>
       </Menu>
     </>
@@ -249,7 +280,7 @@ const Row = ({ member, deleteMember, updateMember, round, isAdmin }) => {
         </div>
       </TableCell>
       <TableCell>
-        <p>{member.email}</p>
+        <p data-testid="invited-participant-email">{member.email}</p>
         {!member.user.verifiedEmail ? (
           <p className="text-sm text-gray-500">
             (<FormattedMessage defaultMessage="not verified" />)
@@ -262,7 +293,7 @@ const Row = ({ member, deleteMember, updateMember, round, isAdmin }) => {
       </TableCell>
       <TableCell component="th" scope="row">
         {member.bio && (
-          <Tooltip position="bottom-start" size="small" title={member.bio}>
+          <Tooltip placement="bottom-start" arrow={false} content={member.bio}>
             <p className="truncate max-w-xs">{member.bio}</p>
           </Tooltip>
         )}
@@ -330,7 +361,7 @@ const RoundMembersTable = ({
   deleteMember,
   round,
   isAdmin,
-  searchString
+  searchString,
 }) => {
   const [bulkAllocateModalOpen, setBulkAllocateModalOpen] = useState(false);
   const [pageVariables, setPageVariables] = useState([
@@ -338,6 +369,10 @@ const RoundMembersTable = ({
   ]);
 
   const intl = useIntl();
+
+  const [pageVariables, setPageVariables] = useState([
+    { limit: 30, offset: 0 },
+  ]);
 
   return (
     <>
@@ -365,11 +400,11 @@ const RoundMembersTable = ({
                     </span>{" "}
                     {isAdmin && (
                       <Tooltip
-                        title={intl.formatMessage({
+                        content={intl.formatMessage({
                           defaultMessage: "Allocate to all members",
                         })}
-                        position="bottom"
-                        size="small"
+                        placement="bottom"
+                        arrow={false}
                       >
                         <IconButton
                           onClick={() => setBulkAllocateModalOpen(true)}
@@ -396,7 +431,8 @@ const RoundMembersTable = ({
             <TableBody>
               {pageVariables.map((variables, i) => {
                 return (
-                  <Page key={i}
+                  <Page
+                    key={i}
                     variables={variables}
                     isLastPage={i === pageVariables.length - 1}
                     onLoadMore={({ limit, offset }) => {
@@ -408,9 +444,8 @@ const RoundMembersTable = ({
                     round={round}
                     searchString={searchString}
                   />
-                )
+                );
               })}
-
             </TableBody>
           </Table>
         </TableContainer>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, gql } from "urql";
-import { Tooltip } from "react-tippy";
+import Tooltip from "@tippyjs/react";
 import Router from "next/router";
 import Link from "next/link";
 
@@ -63,7 +63,11 @@ export default function NewRoundPage({ currentGroup }) {
         <div className="mx-auto max-w-md space-y-8 mt-10">
           <div className="bg-white rounded-lg shadow-lg p-6">
             <h1 className="text-2xl mb-2 font-semibold">New Round</h1>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <form
+              onSubmit={handleSubmit(onSubmit)}
+              className="space-y-4"
+              data-testid="create-round-form"
+            >
               <TextField
                 name="title"
                 label="Title"
@@ -73,6 +77,7 @@ export default function NewRoundPage({ currentGroup }) {
                 className=""
                 error={errors.title}
                 helperText={errors.title?.message}
+                testid={"round-title"}
                 inputProps={{
                   onChange: (e) => setSlugValue(slugify(e.target.value)),
                 }}
@@ -83,9 +88,9 @@ export default function NewRoundPage({ currentGroup }) {
                   <div className="items-center flex">
                     Slug
                     <Tooltip
-                      title={`The part that comes after the domain in the URL`}
-                      position="bottom"
-                      size="small"
+                      content={`The part that comes after the domain in the URL`}
+                      placement="bottom"
+                      arrow={false}
                     >
                       <QuestionMarkIcon className="ml-1 w-5 h-5 text-gray-600 hover:text-black" />
                     </Tooltip>
@@ -129,7 +134,12 @@ export default function NewRoundPage({ currentGroup }) {
                 <option value="INVITE_ONLY">Invite only</option>
               </SelectField>
 
-              <Button className="" type="submit" fullWidth>
+              <Button
+                className=""
+                type="submit"
+                fullWidth
+                testid="create-round-button"
+              >
                 Create
               </Button>
             </form>

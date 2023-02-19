@@ -17,6 +17,7 @@ module.exports = {
     content: [
       "./pages/**/*.{js,ts,jsx,tsx}",
       "./components/**/*.{js,ts,jsx,tsx}",
+      "./utils/**/*.{js,ts,jsx,tsx}",
     ],
     options: {
       // adding these colors to the safelist since they are often put together as a dynamic string concatenation
@@ -36,12 +37,22 @@ module.exports = {
         // Bucket page layout
         sidebar: "minmax(0,1fr) 350px",
         funding: "auto minmax(100px, max-content)",
+        groupheading: "8rem calc(100% - 16rem)",
       },
       borderColor: {
         f: "rgb(172, 182, 192)",
       },
       fontSize: {
         xxs: "9px",
+      },
+      backgroundColor: {
+        highlight: "#fce9b4",
+        "app-gray": "#4d4d4d",
+        "app-yellow": "#f6c429",
+        "app-orange": "#ff9301",
+        "app-purple": "#80529b",
+        "app-green": "#87c44a",
+        "app-red": "#ff5455",
       },
       height: {
         88: "22rem",

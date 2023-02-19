@@ -18,8 +18,8 @@ import { client as createClientConfig } from "graphql/client";
 import prisma from "server/prisma";
 import { TOP_LEVEL_QUERY } from "pages/_app";
 import Table from "../../../components/Table";
-import { FormattedNumber } from "react-intl";
-
+import { FormattedNumber, FormattedMessage } from "react-intl";
+import FormattedCurrency from "components/FormattedCurrency";
 export const ROUND_PAGE_QUERY = gql`
   query RoundPage($roundSlug: String!, $groupSlug: String) {
     round(roundSlug: $roundSlug, groupSlug: $groupSlug) {
@@ -31,6 +31,7 @@ export const ROUND_PAGE_QUERY = gql`
       bucketCreationIsOpen
       totalInMembersBalances
       allowStretchGoals
+      bucketReviewIsOpen
       currency
       tags {
         id
@@ -43,6 +44,7 @@ export const ROUND_PAGE_QUERY = gql`
       bucketStatusCount {
         PENDING_APPROVAL
         OPEN_FOR_FUNDING
+        IDEA
         FUNDED
         CANCELED
         COMPLETED
@@ -60,6 +62,8 @@ export const BUCKETS_QUERY = gql`
     $offset: Int
     $limit: Int
     $status: [StatusType!]
+    $orderBy: String
+    $orderDir: String
   ) {
     bucketsPage(
       groupSlug: $groupSlug
@@ -69,6 +73,8 @@ export const BUCKETS_QUERY = gql`
       offset: $offset
       limit: $limit
       status: $status
+      orderBy: $orderBy
+      orderDir: $orderDir
     ) {
       moreExist
       buckets {
@@ -84,10 +90,16 @@ export const BUCKETS_QUERY = gql`
         noOfFunders
         income
         totalContributions
+        totalContributionsFromCurrentMember
         noOfComments
         published
         approved
         canceled
+        status
+        percentageFunded
+        round {
+          canCocreatorStartFunding
+        }
         customFields {
           value
           customField {
@@ -122,17 +134,24 @@ const Page = ({
   currentUser,
   loading,
   bucketTableView,
+  pause,
+  orderBy,
 }) => {
   const { tag, s } = router.query;
 
   const [{ data, fetching, error }] = useQuery({
     query: BUCKETS_QUERY,
+    pause,
     variables: {
       groupSlug: router.query.group,
       roundSlug: router.query.round,
       offset: variables.offset,
       limit: variables.limit,
       status: statusFilter,
+      ...(orderBy && {
+        orderBy,
+        orderDir: "desc",
+      }),
       ...(!!s && { textSearchTerm: s }),
       ...(!!tag && { tag }),
     },
@@ -148,7 +167,7 @@ const Page = ({
         accessor: "title",
         Cell: ({ cell }) => (
           <Link
-            href={`/${round.group?.slug ?? "c"}/${round.slug}/${
+            href={`/${round?.group?.slug ?? "c"}/${round?.slug}/${
               cell.row.original?.id
             }`}
           >
@@ -207,35 +226,38 @@ const Page = ({
         ),
       },*/
       {
-      Header: "Needed",
-      accessor: "fundsNeeded",
-      Cell: ({ cell }) => (
-        <FormattedNumber
-          value={cell.value / 100}
-          style="currency"
-          currencyDisplay={"symbol"}
-          currency={round?.currency}
-        />
-      ),
-    },
+        Header: "Needed",
+        accessor: "fundsNeeded",
+        Cell: ({ cell }) => (
+          <FormattedNumber
+            value={cell.value / 100}
+            style="currency"
+            currencyDisplay={"symbol"}
+            currency={round?.currency}
+          />
+        ),
+      },
       {
         Header: "Progress",
         accessor: "progress",
-        Cell: ({ cell }) => Math.round(cell.value) + "%",
+        Cell: ({ cell }) => Math.floor(cell.value) + "%",
       },
       {
         Header: "Funders",
         accessor: "fundersCount",
       },
-      {
+    ];
+
+    if (round?.bucketReviewIsOpen) {
+      cols.push({
         Header: "Approvals",
         accessor: "goodFlagCount",
-      },
-      {
+      });
+      cols.push({
         Header: "Flags",
         accessor: "raiseFlagCount",
-      },
-    ];
+      });
+    }
 
     /* 
     if (currentUser) {
@@ -278,9 +300,9 @@ const Page = ({
   }, [
     round?.currency,
     round?.allowStretchGoals,
-    currentUser,
     round?.group?.slug,
     round?.slug,
+    round?.bucketReviewIsOpen,
   ]);
 
   if (error) {
@@ -295,7 +317,22 @@ const Page = ({
             href={`/${round.group?.slug ?? "c"}/${round.slug}/${bucket.id}`}
             key={bucket.id}
           >
-            <a className="flex focus:outline-none focus:ring rounded-lg">
+            <a
+              className="flex focus:outline-none focus:ring rounded-lg"
+              onClick={() => {
+                router.push(
+                  {
+                    pathname: "/[group]/[round]",
+                    query: {
+                      ...router.query,
+                      f: statusFilter,
+                    },
+                  },
+                  undefined,
+                  { shallow: true, scroll: false }
+                );
+              }}
+            >
               <BucketCard bucket={bucket} round={round} />
             </a>
           </Link>
@@ -309,7 +346,7 @@ const Page = ({
             minGoal: bucket.minGoal,
             stretchGoal: round?.allowStretchGoals ? bucket.maxGoal : "-",
             myFunding: bucket.totalContributionsFromCurrentMember,
-            totalFunding: bucket.totalContributions + bucket.income,
+            totalFunding: bucket.totalContributions,
             externalFunding: bucket.income || 0,
             goodFlagCount: bucket.flags.filter(
               (f) => f.type === "ALL_GOOD_FLAG"
@@ -317,26 +354,23 @@ const Page = ({
             raiseFlagCount: bucket.flags.filter((f) => f.type === "RAISE_FLAG")
               .length,
             fundersCount: bucket.noOfFunders || 0,
-            internalFunding:
-              bucket.totalContributions || 0,
-            fundsNeeded: 
-              (bucket.minGoal - bucket.income - bucket.totalContributions) > 0 
-                ? bucket.minGoal - bucket.income - bucket.totalContributions
-                : 0
-              ,
+            internalFunding: bucket.totalContributions || 0,
+            fundsNeeded:
+              bucket.minGoal - bucket.totalContributions > 0
+                ? bucket.minGoal - bucket.totalContributions
+                : 0,
             progress:
               Math.floor(
-                ((bucket.income + bucket.totalContributions || 0) / (bucket.minGoal || 1)) *
+                ((bucket.totalContributions || 0) / (bucket.minGoal || 1)) *
                   10000
               ) / 100,
             stretchGoalProgress:
               round.allowStretchGoals && bucket.maxGoal
                 ? bucket.maxGoal - bucket.minGoal > 0
-                  ? ((bucket.income + bucket.totalContributions || 0) /
-                      (bucket.maxGoal || 1)) *
+                  ? ((bucket.totalContributions || 0) / (bucket.maxGoal || 1)) *
                     100
                   : 0
-                : "-",
+                : 0,
           }))}
         />
       ) : null}
@@ -395,41 +429,46 @@ const getStandardFilter = (bucketStatusCount) => {
   // if there is either pending or open for funding buckets, show those categories
   if (
     bucketStatusCount["PENDING_APPROVAL"] ||
-    bucketStatusCount["OPEN_FOR_FUNDING"]
+    bucketStatusCount["OPEN_FOR_FUNDING"] ||
+    bucketStatusCount["IDEA"]
   ) {
     if (bucketStatusCount["PENDING_APPROVAL"])
       stdFilter.push("PENDING_APPROVAL");
     if (bucketStatusCount["OPEN_FOR_FUNDING"])
       stdFilter.push("OPEN_FOR_FUNDING");
+    if (bucketStatusCount["IDEA"]) stdFilter.push("IDEA");
   } else {
     // otherwise show every other
     const statusNames = Object.keys(bucketStatusCount);
     const values = Object.values(bucketStatusCount);
     stdFilter = statusNames
-      .filter((status, i) => !!values[i])
+      //.filter((status, i) => !!values[i])
       .filter((status) => status !== "__typename");
   }
   return stdFilter;
 };
 
 const RoundPage = ({ currentUser }) => {
+  const limit = 12;
   const [newBucketModalOpen, setNewBucketModalOpen] = useState(false);
   const [bucketTableView, setBucketTableView] = useState(false);
   const [pageVariables, setPageVariables] = useState([
-    { limit: 12, offset: 0 },
+    { limit: limit, offset: 0 },
   ]);
+  const [pause, setPause] = useState(true);
+  const [sortBy, setSortBy] = useState<string>();
   const router = useRouter();
 
   const [
     { data: { round } = { round: null }, fetching, error, stale },
   ] = useQuery({
     query: ROUND_PAGE_QUERY,
+    pause,
     variables: {
       roundSlug: router.query.round,
       groupSlug: router.query.group,
     },
   });
-  // const round = data?.round;
 
   const [bucketStatusCount, setBucketStatusCount] = useState(
     round?.bucketStatusCount ?? {}
@@ -461,18 +500,37 @@ const RoundPage = ({ currentUser }) => {
     }
   }, [router?.asPath, router?.query?.view]);
 
-  // if (!router.isReady || (fetching && !round)) {
-  //   return (
-  //     <div className="flex-grow flex justify-center items-center h-64">
-  //       <HappySpinner />
-  //     </div>
-  //   );
-  // }
+  useEffect(() => {
+    if (router.query.round && router.query.group && pause) {
+      setPause(false);
+    }
+  }, [router.query.round, router.query.group, pause]);
+
+  useEffect(() => {
+    if (router.isReady) {
+      const page = parseInt(router.query.page as string);
+      if (!isNaN(page)) {
+        const pageVariables = new Array(page)
+          .fill(0)
+          .map((_, i) => ({ limit: limit, offset: i * limit }));
+        setPageVariables(pageVariables);
+      }
+      setPause(false);
+    }
+  }, [router.isReady, router.query.page]);
+
+  if (pause || fetching) {
+    return (
+      <div className="w-full flex justify-center items-center h-64">
+        <HappySpinner />
+      </div>
+    );
+  }
 
   if (!round && !fetching && router.isReady) {
     return (
       <div className="text-center mt-7">
-        This round either doesn&apos;t exist or you don&apos;t have access to it
+        <FormattedMessage defaultMessage="This round either doesn't exist or you don't have access to it" />
       </div>
     );
   }
@@ -510,37 +568,45 @@ const RoundPage = ({ currentUser }) => {
             )}
           </div>
           <div className={`flex flex-col justify-end items-start`}>
+            <div className="p-3 mb-5 bg-gray-50 shadow-md rounded-md">
+              <p className="font-bold my-0.5">Funds available</p>
+              <div>
+                <table>
+                  <tbody>
+                    {currentUser?.currentCollMember?.isApproved &&
+                      currentUser?.currentCollMember?.hasJoined && (
+                        <tr>
+                          <td className="pr-3">In your account</td>
+                          <td className="font-bold">
+                            <FormattedCurrency
+                              value={currentUser.currentCollMember.balance}
+                              currency={round.currency}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    <tr>
+                      <td className="pr-3">In this round</td>
+                      <td className="font-bold">
+                        <FormattedCurrency
+                          value={round.totalInMembersBalances}
+                          currency={round.currency}
+                        />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
             {round?.bucketCreationIsOpen &&
               currentUser?.currentCollMember?.isApproved &&
               currentUser?.currentCollMember?.hasJoined && (
                 <>
-                  <div className="p-3 mb-5 bg-gray-50 shadow-md rounded-md">
-                    <p className="font-bold my-0.5">Funds available</p>
-                    <div>
-                      <table>
-                        <tbody>
-                          <tr>
-                            <td className="pr-3">In your account</td>
-                            <td className="font-bold">
-                              {currentUser.currentCollMember.balance / 100}
-                              {getCurrencySymbol(round.currency)}
-                            </td>
-                          </tr>
-                          <tr>
-                            <td className="pr-3">In this round</td>
-                            <td className="font-bold">
-                              {round.totalInMembersBalances / 100}
-                              {getCurrencySymbol(round.currency)}
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
                   <Button
                     size="large"
                     color={round.color}
                     onClick={() => setNewBucketModalOpen(true)}
+                    testid="create-new-bucket-button"
                   >
                     New {process.env.BUCKET_NAME_SINGULAR}
                   </Button>
@@ -565,6 +631,8 @@ const RoundPage = ({ currentUser }) => {
           bucketStatusCount={bucketStatusCount}
           view={bucketTableView ? "table" : "grid"}
           currentUser={currentUser}
+          sortBy={sortBy}
+          onChangeSortBy={(e) => setSortBy(e.target.value)}
         />
         <div
           className={
@@ -572,10 +640,12 @@ const RoundPage = ({ currentUser }) => {
               ? ""
               : "grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 relative pb-20"
           }
+          data-testid="buckets-view"
         >
           {pageVariables.map((variables, i) => {
             return (
               <Page
+                pause={pause}
                 router={router}
                 round={round}
                 key={"" + variables.limit + i}
@@ -584,11 +654,23 @@ const RoundPage = ({ currentUser }) => {
                 isLastPage={i === pageVariables.length - 1}
                 currentUser={currentUser}
                 onLoadMore={({ limit, offset }) => {
+                  router.push(
+                    {
+                      pathname: "/[group]/[round]",
+                      query: {
+                        ...router.query,
+                        page: Math.floor(offset / limit) + 1,
+                      },
+                    },
+                    undefined,
+                    { shallow: true, scroll: false }
+                  );
                   setPageVariables([...pageVariables, { limit, offset }]);
                 }}
                 statusFilter={statusFilter}
                 loading={fetching}
                 bucketTableView={bucketTableView}
+                orderBy={sortBy}
               />
             );
           })}
@@ -624,7 +706,7 @@ const RoundPage = ({ currentUser }) => {
 //   //   .query(BUCKETS_QUERY, {
 //   //     ...variables,
 //   //     offset: 0,
-//   //     limit: 12,
+//   //     limit: limit,
 //   //     status: statusFilter,
 //   //   })
 //   //   .toPromise();

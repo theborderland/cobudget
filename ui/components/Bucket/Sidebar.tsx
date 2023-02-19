@@ -1,5 +1,5 @@
-import { Tooltip } from "react-tippy";
-import { useState } from "react";
+import Tooltip from "@tippyjs/react";
+import { useMemo, useState } from "react";
 import { useMutation, gql } from "urql";
 import Router from "next/router";
 import { Modal } from "@material-ui/core";
@@ -20,6 +20,10 @@ import toast from "react-hot-toast";
 import Monster from "components/Monster";
 import capitalize from "utils/capitalize";
 import isRtl from "../../utils/isRTL";
+import dayjs from "dayjs";
+import Label from "../../components/Label";
+import getStatusColor from "utils/getStatusColor";
+import Infobox from "./Infobox";
 
 const APPROVE_FOR_GRANTING_MUTATION = gql`
   mutation ApproveForGranting($bucketId: ID!, $approved: Boolean!) {
@@ -28,6 +32,7 @@ const APPROVE_FOR_GRANTING_MUTATION = gql`
       approved
       canceled
       canceledAt
+      status
     }
   }
 `;
@@ -36,7 +41,9 @@ const PUBLISH_BUCKET_MUTATION = gql`
   mutation PublishBucket($bucketId: ID!, $unpublish: Boolean) {
     publishBucket(bucketId: $bucketId, unpublish: $unpublish) {
       id
+      fundedAt
       published
+      status
     }
   }
 `;
@@ -45,8 +52,10 @@ const MARK_AS_COMPLETED_MUTATION = gql`
   mutation MarkAsCompleted($bucketId: ID!) {
     markAsCompleted(bucketId: $bucketId) {
       id
+      fundedAt
       completedAt
       completed
+      status
     }
   }
 `;
@@ -57,6 +66,7 @@ const ACCEPT_FUNDING_MUTATION = gql`
       id
       fundedAt
       funded
+      status
     }
   }
 `;
@@ -71,6 +81,7 @@ const CANCEL_FUNDING_MUTATION = gql`
       canceledAt
       approved
       totalContributions
+      status
     }
   }
 `;
@@ -79,6 +90,29 @@ const DELETE_BUCKET_MUTATION = gql`
   mutation DeleteBucket($bucketId: ID!) {
     deleteBucket(bucketId: $bucketId) {
       id
+    }
+  }
+`;
+
+const SET_READY_FOR_FUNDING = gql`
+  mutation SetReadyForFunding($bucketId: ID!, $isReadyForFunding: Boolean!) {
+    setReadyForFunding(
+      bucketId: $bucketId
+      isReadyForFunding: $isReadyForFunding
+    ) {
+      id
+      readyForFunding
+      status
+    }
+  }
+`;
+
+const REOPEN_FUNDING = gql`
+  mutation ReopenFunding($bucketId: ID!) {
+    reopenFunding(bucketId: $bucketId) {
+      id
+      funded
+      status
     }
   }
 `;
@@ -121,6 +155,7 @@ const ConfirmCancelBucket = ({ open, close, bucketId }) => {
             <Button
               color="red"
               loading={fetching}
+              testid="confirm-cancel-bucket-button"
               onClick={() =>
                 cancelFunding({ bucketId }).then(({ error }) => {
                   if (error) alert(error.message);
@@ -143,24 +178,50 @@ const css = {
     "text-left block mx-2 px-2 py-1 mb-1 text-gray-800 last:text-red hover:bg-gray-200 rounded-lg focus:outline-none focus:bg-gray-200",
 };
 
-const BucketSidebar = ({ bucket, currentUser, canEdit, showBucketReview }) => {
+const BucketSidebar = ({
+  bucket,
+  currentUser,
+  currentGroup,
+  canEdit,
+  showBucketReview,
+  isAdminOrModerator,
+  isCocreator,
+}) => {
   const [contributeModalOpen, setContributeModalOpen] = useState(false);
   const [cocreatorModalOpen, setCocreatorModalOpen] = useState(false);
   const [actionsDropdownOpen, setActionsDropdownOpen] = useState(false);
   const [confirmCancelBucketOpen, setConfirmCancelBucketOpen] = useState(false);
 
   const [, approveForGranting] = useMutation(APPROVE_FOR_GRANTING_MUTATION);
+  const [, readyForFunding] = useMutation(SET_READY_FOR_FUNDING);
   const [, publishBucket] = useMutation(PUBLISH_BUCKET_MUTATION);
   const [, markAsCompleted] = useMutation(MARK_AS_COMPLETED_MUTATION);
   const [, acceptFunding] = useMutation(ACCEPT_FUNDING_MUTATION);
   const [, deleteBucket] = useMutation(DELETE_BUCKET_MUTATION);
+  const [, reopenFunding] = useMutation(REOPEN_FUNDING);
 
   const intl = useIntl();
 
+  const statusList = {
+    PENDING_APPROVAL: intl.formatMessage({
+      defaultMessage: "Draft",
+    }),
+    IDEA: intl.formatMessage({
+      defaultMessage: "Idea",
+    }),
+    OPEN_FOR_FUNDING: intl.formatMessage({ defaultMessage: "Funding" }),
+    FUNDED: intl.formatMessage({ defaultMessage: "Funded" }),
+    CANCELED: intl.formatMessage({ defaultMessage: "Canceled" }),
+    COMPLETED: intl.formatMessage({ defaultMessage: "Completed" }),
+    ARCHIVED: intl.formatMessage({ defaultMessage: "Archived" }),
+  };
+
   const canApproveBucket =
-    (!bucket.round.requireBucketApproval && canEdit) ||
+    (!bucket.round.canCocreatorStartFunding && canEdit) ||
     currentUser?.currentCollMember?.isAdmin ||
-    currentUser?.currentCollMember?.isModerator;
+    currentUser?.currentCollMember?.isModerator ||
+    (isCocreator && bucket.round.canCocreatorStartFunding);
+
   const isRoundAdminOrGuide =
     currentUser?.currentCollMember?.isAdmin ||
     currentUser?.currentCollMember?.isModerator;
@@ -179,14 +240,164 @@ const BucketSidebar = ({ bucket, currentUser, canEdit, showBucketReview }) => {
     bucket.approved && !bucket.funded && canEdit && hasReachedMinGoal;
   const showPublishButton = canEdit && !bucket.published;
   const showMarkAsCompletedButton =
-    isRoundAdminOrGuide && bucket.funded && !bucket.completed;
+    bucket.funded && !bucket.completed && isCocreator;
+  const showReopenFundingButton =
+    bucket.funded &&
+    !bucket.completed &&
+    isAdminOrModerator &&
+    hasReachedMinGoal &&
+    hasNotReachedMaxGoal;
   const showApproveButton =
-    canApproveBucket && !bucket.round.grantingHasClosed && !bucket.approved;
+    canApproveBucket &&
+    !bucket.round.grantingHasClosed &&
+    !bucket.approved &&
+    bucket.status === "IDEA" &&
+    (isAdminOrModerator ||
+      (isCocreator && bucket.round.canCocreatorStartFunding));
+
   const showUnapproveButton =
     canApproveBucket && bucket.approved && !bucket.totalContributions;
   const showDeleteButton = canEdit && !bucket.totalContributions;
   const showCancelFundingButton =
-    bucket.approved && !bucket.canceled && canEdit;
+    bucket.approved && !bucket.canceled && canEdit && !bucket.completed;
+  //show ready for funding button only to co-creators when the bucket is in IDEA stage
+  const showReadyForFundingButton =
+    bucket.status === "IDEA" &&
+    isCocreator &&
+    !isAdminOrModerator &&
+    !bucket.round.canCocreatorStartFunding;
+
+  const buttons = useMemo(() => {
+    return {
+      ACCEPT_FUNDING: () => (
+        <Button
+          color={bucket.round.color}
+          fullWidth
+          onClick={() =>
+            confirm(
+              intl.formatMessage(
+                {
+                  defaultMessage: `Are you sure you want to accept the funding, even if you have not reached your max goal? You will need to contact an admin to open the {bucketName} for funding again.`,
+                },
+                { bucketName: process.env.BUCKET_NAME_SINGULAR }
+              )
+            ) &&
+            acceptFunding({ bucketId: bucket.id }).catch((err) =>
+              alert(err.message)
+            )
+          }
+          testid="accept-funding-button"
+        >
+          <FormattedMessage defaultMessage="Accept funding" />
+        </Button>
+      ),
+      PUBLISH_BUTTON: () => (
+        <Button
+          color={bucket.round.color}
+          onClick={() =>
+            publishBucket({
+              bucketId: bucket.id,
+              unpublish: bucket.published,
+            })
+          }
+          fullWidth
+          testid="publish-bucket"
+        >
+          <FormattedMessage defaultMessage="Publish" />
+        </Button>
+      ),
+      APPROVE_BUTTON: () => (
+        <Button
+          color={bucket.round.color}
+          fullWidth
+          onClick={() =>
+            approveForGranting({
+              bucketId: bucket.id,
+              approved: true,
+            }).catch((err) => alert(err.message))
+          }
+          testid="open-for-funding-button"
+        >
+          <FormattedMessage defaultMessage="Open for funding" />
+        </Button>
+      ),
+      MARK_AS_COMPLETED: () => (
+        <Button
+          color={bucket.round.color}
+          fullWidth
+          onClick={() =>
+            confirm(
+              intl.formatMessage(
+                {
+                  defaultMessage: `Are you sure you would like to mark this {bucketName} as completed? This can't be undone.`,
+                },
+                { bucketName: process.env.BUCKET_NAME_SINGULAR }
+              )
+            ) &&
+            markAsCompleted({ bucketId: bucket.id }).then(({ data, error }) => {
+              if (error) toast.error(error.message);
+            })
+          }
+          testid="mark-as-completed-button"
+        >
+          <FormattedMessage defaultMessage="Mark as completed" />
+        </Button>
+      ),
+      READY_FOR_FUNDING: () => (
+        <Button
+          color={bucket.round.color}
+          fullWidth
+          onClick={() =>
+            readyForFunding({
+              bucketId: bucket.id,
+              isReadyForFunding: !bucket.readyForFunding,
+            }).then(({ data, error }) => {
+              if (error) toast.error(error.message);
+            })
+          }
+          testid="mark-as-completed-button"
+        >
+          {bucket.readyForFunding ? (
+            <FormattedMessage defaultMessage="Mark as not ready" />
+          ) : (
+            <FormattedMessage defaultMessage="Ready for funding" />
+          )}
+        </Button>
+      ),
+      REOPEN_FUNDING: () => (
+        <Button
+          color={bucket.round.color}
+          fullWidth
+          onClick={() =>
+            reopenFunding({ bucketId: bucket.id }).then(({ data, error }) => {
+              if (error) toast.error(error.message);
+            })
+          }
+          testid="mark-as-completed-button"
+        >
+          <FormattedMessage defaultMessage="Re-open for funding" />
+        </Button>
+      ),
+    };
+  }, [
+    bucket,
+    acceptFunding,
+    approveForGranting,
+    intl,
+    markAsCompleted,
+    readyForFunding,
+    reopenFunding,
+    publishBucket,
+  ]);
+
+  const showDropdown = useMemo(() => {
+    return (
+      showCancelFundingButton ||
+      showUnapproveButton ||
+      showDeleteButton ||
+      bucket.published
+    );
+  }, [showCancelFundingButton, showUnapproveButton, showDeleteButton, bucket]);
 
   return (
     <>
@@ -208,100 +419,32 @@ const BucketSidebar = ({ bucket, currentUser, canEdit, showBucketReview }) => {
                   handleClose={() => setContributeModalOpen(false)}
                   bucket={bucket}
                   currentUser={currentUser}
+                  currentGroup={currentGroup}
                 />
               )}
             </>
           )}
-          {showBucketReview ||
-          canEdit ||
-          bucket.cocreators.find(
-            (co) => co.id === currentUser?.currentCollMember?.id
-          ) ? (
-            <Monster bucket={bucket} />
-          ) : null}
-          {showAcceptFundingButton && (
-            <Button
-              color={bucket.round.color}
-              fullWidth
-              onClick={() =>
-                confirm(
-                  intl.formatMessage(
-                    {
-                      defaultMessage: `Are you sure you would like to accept and finalize funding for this {bucketName}? This can't be undone.`,
-                    },
-                    { bucketName: process.env.BUCKET_NAME_SINGULAR }
-                  )
-                ) &&
-                acceptFunding({ bucketId: bucket.id }).catch((err) =>
-                  alert(err.message)
-                )
-              }
-            >
-              <FormattedMessage defaultMessage="Accept funding" />
-            </Button>
-          )}
-
-          {showPublishButton && (
-            <Button
-              color={bucket.round.color}
-              onClick={() =>
-                publishBucket({
-                  bucketId: bucket.id,
-                  unpublish: bucket.published,
-                })
-              }
-              fullWidth
-            >
-              <FormattedMessage defaultMessage="Publish" />
-            </Button>
-          )}
-          {showApproveButton && (
-            <Button
-              color={bucket.round.color}
-              fullWidth
-              onClick={() =>
-                approveForGranting({
-                  bucketId: bucket.id,
-                  approved: true,
-                }).catch((err) => alert(err.message))
-              }
-            >
-              <FormattedMessage defaultMessage="Open for funding" />
-            </Button>
-          )}
-          {showMarkAsCompletedButton && (
-            <Button
-              color={bucket.round.color}
-              fullWidth
-              onClick={() =>
-                confirm(
-                  intl.formatMessage(
-                    {
-                      defaultMessage: `Are you sure you would like to mark this {bucketName} as completed? This can't be undone.`,
-                    },
-                    { bucketName: process.env.BUCKET_NAME_SINGULAR }
-                  )
-                ) &&
-                markAsCompleted({ bucketId: bucket.id }).then(
-                  ({ data, error }) => {
-                    if (error) toast.error(error.message);
-                  }
-                )
-              }
-            >
-              <FormattedMessage defaultMessage="Mark as completed" />
-            </Button>
-          )}
-          {canEdit && (
+          {showBucketReview ? <Monster bucket={bucket} /> : null}
+          {showAcceptFundingButton && <buttons.ACCEPT_FUNDING />}
+          {showPublishButton && <buttons.PUBLISH_BUTTON />}
+          {showApproveButton && <buttons.APPROVE_BUTTON />}
+          {showMarkAsCompletedButton && <buttons.MARK_AS_COMPLETED />}
+          {showReadyForFundingButton && <buttons.READY_FOR_FUNDING />}
+          {showReopenFundingButton && <buttons.REOPEN_FUNDING />}
+          {canEdit && showDropdown && (
             <div className="relative">
               <div className="flex justify-end">
                 <Tooltip
-                  title={intl.formatMessage({ defaultMessage: "More actions" })}
-                  position="bottom"
-                  size="small"
+                  content={intl.formatMessage({
+                    defaultMessage: "More actions",
+                  })}
+                  placement="bottom"
+                  arrow={false}
                 >
                   <IconButton onClick={() => setActionsDropdownOpen(true)}>
-                    <DotsHorizontalIcon />
+                    <span data-testid="bucket-more-edit-options-button">
+                      <DotsHorizontalIcon />
+                    </span>
                   </IconButton>
                 </Tooltip>
               </div>
@@ -336,6 +479,7 @@ const BucketSidebar = ({ bucket, currentUser, canEdit, showBucketReview }) => {
                     <button
                       className={css.dropdownButton}
                       onClick={() => setConfirmCancelBucketOpen(true)}
+                      data-testid="cancel-bucket-button"
                     >
                       <FormattedMessage defaultMessage="Cancel" />{" "}
                       {process.env.BUCKET_NAME_SINGULAR}
@@ -402,6 +546,21 @@ const BucketSidebar = ({ bucket, currentUser, canEdit, showBucketReview }) => {
         </div>
       )}
       <div className="mt-5 space-y-5">
+        <div>
+          <div className="mr-2 font-medium ">
+            <FormattedMessage defaultMessage="Bucket Status" />
+          </div>
+          <span>
+            <Label
+              className={
+                "mt-2 inline-block " + getStatusColor(bucket.status, bucket)
+              }
+              testid="bucket-status-view"
+            >
+              {statusList[bucket.status]}
+            </Label>
+          </span>
+        </div>
         <div className="">
           <h2 className="mb-2 font-medium hidden md:block relative">
             <span className="mr-2 font-medium ">
@@ -415,11 +574,11 @@ const BucketSidebar = ({ bucket, currentUser, canEdit, showBucketReview }) => {
                 }
               >
                 <Tooltip
-                  title={intl.formatMessage({
+                  content={intl.formatMessage({
                     defaultMessage: "Edit co-creators",
                   })}
-                  position="bottom"
-                  size="small"
+                  placement="bottom"
+                  arrow={false}
                 >
                   <IconButton onClick={() => setCocreatorModalOpen(true)}>
                     <EditIcon className="h-5 w-5" />
@@ -463,6 +622,7 @@ const BucketSidebar = ({ bucket, currentUser, canEdit, showBucketReview }) => {
               )}
             </div>
           </div>
+
           <EditCocreatorsModal
             open={cocreatorModalOpen}
             handleClose={() => setCocreatorModalOpen(false)}
@@ -472,6 +632,19 @@ const BucketSidebar = ({ bucket, currentUser, canEdit, showBucketReview }) => {
           />
         </div>
         <Tags bucket={bucket} canEdit={canEdit} />
+
+        <Infobox
+          bucket={bucket}
+          isAdminOrModerator={isAdminOrModerator}
+          isCocreator={isCocreator}
+        />
+
+        <p className="italic text-gray-600 text-sm">
+          <FormattedMessage
+            defaultMessage="The bucket was created on {date}"
+            values={{ date: dayjs(bucket.createdAt).format("MMMM DD, YYYY") }}
+          />
+        </p>
       </div>
     </>
   );

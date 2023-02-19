@@ -119,14 +119,15 @@ export default {
 
     const htmlPurpose = await mdToHtml(mdPurpose);
 
-    await sendEmail({
-      to: email,
-      subject: `${currentUser.name} invited you to join "${groupCollName}" on ${process.env.PLATFORM_NAME}!`,
-      html: `Hi${invitedUser.name ? ` ${escape(invitedUser.name)}` : ""}!
+    await sendEmail(
+      {
+        to: email,
+        subject: `${currentUser.name} invited you to join "${groupCollName}" on ${process.env.PLATFORM_NAME}!`,
+        html: `Hi${invitedUser.name ? ` ${escape(invitedUser.name)}` : ""}!
       <br/><br/>
       You have been invited by ${escape(currentUser.name)} to ${escape(
-        groupCollName
-      )} on ${process.env.PLATFORM_NAME}.
+          groupCollName
+        )} on ${process.env.PLATFORM_NAME}.
       Accept your invitation by <a href="${inviteLink}">Clicking here</a>.
       ${htmlPurpose
           ? `<br/><br/>
@@ -136,7 +137,9 @@ export default {
       <br/><br/>
       ${footer}
       `,
-    });
+      },
+      false
+    );
   },
   loginMagicLink: async ({ destination, href, code, req }) => {
     const link = `${getRequestOrigin(req)}${href}`;
@@ -146,21 +149,25 @@ export default {
     });
 
     if (hasAccountAlready) {
-      await sendEmail({
-        to: destination,
-        subject: `Your ${process.env.PLATFORM_NAME} login link`,
-        html: `<a href="${link}">Click here to login</a>
+      await sendEmail(
+        {
+          to: destination,
+          subject: `Your ${process.env.PLATFORM_NAME} login link`,
+          html: `<a href="${link}">Click here to login</a>
         <br/><br/>
         Verification code: ${code}
         <br/><br/>
         ${footer}
         `,
-      });
+        },
+        false
+      );
     } else {
-      await sendEmail({
-        to: destination,
-        subject: `Welcome to ${process.env.PLATFORM_NAME} - confirm your account and get started!`,
-        html: `Welcome!
+      await sendEmail(
+        {
+          to: destination,
+          subject: `Welcome to ${process.env.PLATFORM_NAME} - confirm your account and get started!`,
+          html: `Welcome!
         <br/><br/>
         Your ${process.env.PLATFORM_NAME} account has been created! We're excited to welcome you to the community.
         <br/><br/>
@@ -168,7 +175,9 @@ export default {
         <br/><br/>
         ${footer}
       `,
-      });
+        },
+        false
+      );
     }
   },
   welcomeEmail: async ({ newUser }: { newUser: { email: string } }) => {
@@ -195,7 +204,15 @@ export default {
       subject: `Welcome to ${process.env.PLATFORM_NAME}!`,
       html: `You’ve just taken your first step towards co-creating your dreams for the Borderland! Dreams is the virtual drawing board of The Borderland. Is is the place where we prototype the projects we'll realise during the week in Alversjö.
       <br/><br/>
-      If you need help with the Dreams platform, check out the <a href="https://dreams.theborderland.se/c/borderland-dreams-2022/about">Dreams guide</a> for some simple how-to’s or ask for help in the <a href="https://discord.gg/sYcsvxVve2">Borderland Discord</a>.
+      We are thrilled to have you with us!
+      <br/><br/>
+      <b>How to get started?</b>
+      <ul>
+      <li>Check out the <a href="https://guide.cobudget.com/">Cobudget docs</a> for some simple how-to’s</li>
+      <li>${createYourFirst}</li>
+      </ul>
+      <br/>
+       If you need help with the Dreams platform, check out the <a href="https://dreams.theborderland.se/c/borderland-dreams-2022/about">Dreams guide</a> for some simple how-to’s or ask for help in the <a href="https://discord.gg/sYcsvxVve2">Borderland Discord</a>.
       `,
     });
   },
@@ -388,13 +405,37 @@ export default {
     await sendEmail({
       to: user.email,
       subject: `${user.name}, you’ve received funds to spend in ${round.title}!`,
-      html: `You have received ${(newAmount - oldAmount) / 100} ${round.currency
-        } in ${escape(round.title)}.
-      <br/><br/>
-      Decide now which dreams to allocate your funds to by checking out the current proposals in <a href="${appLink(
-          `/${group.slug}/${round.slug}`
-        )}">${escape(round.title)}</a>. <br/><br/>${footer}`,
+      html: `You have received ${(newAmount - oldAmount) / 100} ${
+        round.currency
+      } in ${escape(
+        round.title
+      )}. <br/><br/>Decide now which dreams to allocate your funds to by checking out the current proposals in <a href="${appLink(
+        `/${group.slug}/${round.slug}`
+      )}">${escape(round.title)}</a>. <br/><br/>${footer}`,
     });
+  },
+  bulkAllocateNotification: async ({ roundId, membersData }) => {
+    const round = await prisma.round.findUnique({
+      where: { id: roundId },
+      include: { group: true },
+    });
+    const emails = membersData
+      .filter((member) => member.emailSettings?.allocatedToYou ?? true)
+      .filter((member) => member.adjustedAmount > 0)
+      .map((member) => {
+        return {
+          to: member.user.email,
+          subject: `${member.user.name}, you’ve received funds to spend in ${round.title}!`,
+          html: `You have received ${member.adjustedAmount / 100} ${
+            round.currency
+          } in ${escape(
+            round.title
+          )}. <br/><br/>Decide now which dreams to allocate your funds to by checking out the current proposals in <a href="${appLink(
+            `/${round.group.slug}/${round.slug}`
+          )}">${escape(round.title)}</a>.<br/><br/> ${footer}`,
+        };
+      });
+    await sendEmails(emails);
   },
   bulkAllocateNotification: async ({ roundId, membersData }) => {
     const round = await prisma.round.findUnique({

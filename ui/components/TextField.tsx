@@ -21,10 +21,11 @@ const TextField = ({
   required,
   startAdornment,
   endAdornment,
-  color = "blue",
+  color = "anthracit",
   wysiwyg,
   enableMentions = false,
   mentionsCollId = null,
+  testid,
 }: {
   inputRef?: any;
   inputProps?: any;
@@ -49,10 +50,14 @@ const TextField = ({
   wysiwyg?: boolean;
   enableMentions?: boolean;
   mentionsCollId?: string;
+  testid?: string;
 }) => {
   const LabelComponent = labelComponent;
   return (
-    <div className={`flex flex-col min-w-0 ${className}`}>
+    <div
+      className={`flex flex-col min-w-0 ${className}`}
+      data-testid={testid ? `text-field-container-${testid}` : ""}
+    >
       {(label || labelComponent) && (
         <label htmlFor={name} className="text-sm font-medium mb-1 block">
           {label ? label : <LabelComponent />}
@@ -85,6 +90,7 @@ const TextField = ({
             autoFocus={autoFocus}
             maxLength={maxLength}
             required={required}
+            data-testid={testid}
             {...inputProps}
           />
         )
@@ -113,6 +119,7 @@ const TextField = ({
               ${startAdornment ? "pl-1" : ""}
               ${endAdornment ? "pr-1" : ""}
             `}
+            data-testid={testid}
             name={name}
             id={name}
             ref={inputRef}
@@ -137,8 +144,11 @@ const TextField = ({
           )}
         </div>
       )}
-      {error && (
-        <span className="text-red px-4 py-1 text-xs font-medium">
+      {error && helperText && (
+        <span
+          className="text-red px-4 py-1 text-xs font-medium"
+          data-testid={testid ? `helpertext-${testid}` : undefined}
+        >
           {helperText}
         </span>
       )}

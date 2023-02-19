@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { useMutation, gql } from "urql";
 import { useEffect, useMemo, useState } from "react";
-import { Tooltip } from "react-tippy";
+import Tooltip from "@tippyjs/react";
 import * as yup from "yup";
 import { yupResolver } from "@hookform/resolvers";
 import Markdown from "../../Markdown";
@@ -12,6 +12,8 @@ import HiddenTextField from "../../HiddenTextField";
 import SelectInput from "../../SelectInput";
 import Button from "../../Button";
 import { FormattedMessage, useIntl } from "react-intl";
+import toast from "react-hot-toast";
+import { COCREATORS_CANT_EDIT } from "../../../utils/messages";
 
 const EDIT_BUCKET_CUSTOM_FIELD_MUTATION = gql`
   mutation EditBucketCustomField(
@@ -44,10 +46,19 @@ const BucketCustomField = ({
   roundId,
   bucketId,
   canEdit,
+  isEditingAllowed,
 }) => {
   const defaultValue = customField ? customField.value : null;
   const [editing, setEditing] = useState(false);
   const intl = useIntl();
+
+  const handleEdit = () => {
+    if (isEditingAllowed) {
+      setEditing(true);
+    } else {
+      toast.error(COCREATORS_CANT_EDIT);
+    }
+  };
 
   const schema = useMemo(() => {
     const maxValue = yup
@@ -133,10 +144,10 @@ const BucketCustomField = ({
               >
                 <option value={""}></option>
                 <option value={"true"}>
-                  <FormattedMessage defaultMessage="Yes" />
+                  {intl.formatMessage({ defaultMessage: "Yes" })}
                 </option>
                 <option value={"false"}>
-                  <FormattedMessage defaultMessage="No" />
+                  {intl.formatMessage({ defaultMessage: "No" })}
                 </option>
               </SelectInput>
             ) : null}
@@ -208,8 +219,8 @@ const BucketCustomField = ({
 
         {canEdit && (
           <div className="absolute top-0 right-0">
-            <Tooltip title="Edit field" position="bottom" size="small">
-              <IconButton onClick={() => setEditing(true)}>
+            <Tooltip content="Edit field" placement="bottom" arrow={false}>
+              <IconButton onClick={handleEdit}>
                 <EditIcon className="h-6 w-6" />
               </IconButton>
             </Tooltip>
@@ -220,7 +231,7 @@ const BucketCustomField = ({
   } else if (canEdit) {
     return (
       <button
-        onClick={() => setEditing(true)}
+        onClick={handleEdit}
         className="w-full h-24 block text-gray-600 font-semibold rounded-lg border-3 border-dashed focus:outline-none focus:bg-gray-100 hover:bg-gray-100 mb-4"
       >
         + {defaultCustomField.name}

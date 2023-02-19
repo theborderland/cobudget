@@ -1,18 +1,20 @@
-import { useEffect, useState } from "react";
 import "../styles.css";
-import "react-tippy/dist/tippy.css";
-import { withUrqlClient, initUrqlClient } from "next-urql";
+import "tippy.js/dist/tippy.css";
+
+import { useState, useEffect, useMemo } from "react";
+import { withUrqlClient } from "next-urql";
 import { client } from "../graphql/client";
 import Layout from "../components/Layout";
-import Modal from "../components/Modal";
 import { useQuery, gql } from "urql";
 import { Toaster } from "react-hot-toast";
-import FinishSignup from "components/FinishSignup";
-import { useRouter } from "next/router";
+import RequiredActionsModal from "components/RequiredActions";
 import { IntlProvider } from "react-intl";
 import lang, { supportedLangCodes } from "../lang";
 import isRTL from "../utils/isRTL";
 import Cookies from "js-cookie";
+import { ErrorBoundary } from "react-error-boundary";
+import reportError from "utils/reportError";
+import Fallback from "components/Fallback";
 
 export const CURRENT_USER_QUERY = gql`
   query CurrentUser($roundSlug: String, $groupSlug: String) {
@@ -22,6 +24,8 @@ export const CURRENT_USER_QUERY = gql`
       name
       avatar
       email
+      acceptedTermsAt
+      isSuperAdmin
 
       groupMemberships {
         id
@@ -98,7 +102,6 @@ export const TOP_LEVEL_QUERY = gql`
         value
       }
       allowStretchGoals
-      requireBucketApproval
       bucketReviewIsOpen
       discourseCategoryId
       totalInMembersBalances
@@ -128,6 +131,9 @@ export const TOP_LEVEL_QUERY = gql`
       slug
       discourseUrl
       finishedTodos
+      experimentalFeatures
+      registrationPolicy
+      visibility
     }
     bucket(id: $bucketId) {
       id
@@ -136,8 +142,18 @@ export const TOP_LEVEL_QUERY = gql`
   }
 `;
 
+const GET_SUPER_ADMIN_SESSION = gql`
+  query GetSuperAdminSession {
+    getSuperAdminSession {
+      id
+      duration
+      start
+      end
+    }
+  }
+`;
+
 const MyApp = ({ Component, pageProps, router }) => {
-  
   const [{ data, fetching, error }] = useQuery({
     query: TOP_LEVEL_QUERY,
     variables: {
@@ -146,8 +162,11 @@ const MyApp = ({ Component, pageProps, router }) => {
       roundSlug: router.query.round,
       bucketId: router.query.bucket,
     },
-    pause: !router.isReady
+    pause: !router.isReady,
   });
+
+  const [{ data: ssQuery }] = useQuery({ query: GET_SUPER_ADMIN_SESSION });
+  const ss = ssQuery?.getSuperAdminSession;
 
   const [
     { data: currentUserData, fetching: fetchingUser, error: errorUser },
@@ -162,10 +181,24 @@ const MyApp = ({ Component, pageProps, router }) => {
   });
 
   const { round = null, group = null, bucket = null } = data ?? {};
-  const { currentUser = null } = currentUserData ?? {};
+  const currentUser = useMemo(() => {
+    const { currentUser: c } = currentUserData ?? {};
+    if (!c) return null;
+    if (!ss) return c;
+    if (c.currentCollMember && ss) {
+      c.currentCollMember.isAdmin = true;
+    } else if (ss) {
+      c.currentCollMember = { isAdmin: true };
+    }
 
-  // legacy modal logic
-  const [modal, setModal] = useState(null);
+    if (c.currentGroupMember && ss) {
+      c.currentGroupMember.isAdmin = true;
+    } else if (ss) {
+      c.currentGroupMember = { isAdmin: true };
+    }
+    return c;
+  }, [currentUserData, ss]);
+
   const [locale, setLocale] = useState(
     (() => {
       if (typeof window !== "undefined") {
@@ -179,13 +212,6 @@ const MyApp = ({ Component, pageProps, router }) => {
     })()
   );
 
-  const openModal = (name) => {
-    if (modal !== name) setModal(name);
-  };
-  const closeModal = () => {
-    setModal(null);
-  };
-
   useEffect(() => {
     const locale = Cookies.get("locale");
     if (locale) {
@@ -198,8 +224,6 @@ const MyApp = ({ Component, pageProps, router }) => {
     setLocale(locale);
   };
 
-  const showFinishSignupModal = !!(currentUser && !currentUser.username);
-
   if (error) {
     console.error("Top level query failed:", error);
     return error.message;
@@ -207,29 +231,29 @@ const MyApp = ({ Component, pageProps, router }) => {
 
   return (
     <IntlProvider locale={locale} messages={lang[locale]}>
-      {/* legacy Modal component, use individual modals where they are called instead */}
-      <Modal active={modal} closeModal={closeModal} currentUser={currentUser} />
-      <FinishSignup isOpen={showFinishSignupModal} currentUser={currentUser} />
-      <Layout
-        currentUser={currentUser}
-        fetchingUser={fetchingUser}
-        openModal={openModal}
-        group={group}
-        round={round}
-        bucket={bucket}
-        dir={isRTL(locale) ? "rtl" : "ltr"}
-        locale={locale}
-        changeLocale={changeLocale}
-      >
-        <Component
-          {...pageProps}
+      <RequiredActionsModal currentUser={currentUser} />
+      <ErrorBoundary FallbackComponent={Fallback} onError={reportError}>
+        <Layout
           currentUser={currentUser}
-          router={router}
+          fetchingUser={fetchingUser}
+          group={group}
           round={round}
-          currentGroup={group}
-        />
-        <Toaster />
-      </Layout>
+          bucket={bucket}
+          dir={isRTL(locale) ? "rtl" : "ltr"}
+          locale={locale}
+          changeLocale={changeLocale}
+          ss={ss}
+        >
+          <Component
+            {...pageProps}
+            currentUser={currentUser}
+            router={router}
+            round={round}
+            currentGroup={group}
+          />
+          <Toaster />
+        </Layout>
+      </ErrorBoundary>
     </IntlProvider>
   );
 };

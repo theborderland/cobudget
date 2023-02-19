@@ -25,7 +25,7 @@ const RoundMembersPage = ({ currentUser }) => {
       groupSlug: router.query.group,
       roundSlug: router.query.round,
     },
-    pause: !router.isReady
+    pause: !router.isReady,
   });
 
   if (!round) return null;
@@ -33,7 +33,8 @@ const RoundMembersPage = ({ currentUser }) => {
   return (
     <div className="flex-1">
       <SubMenu currentUser={currentUser} round={round} />
-      {currentUser?.currentCollMember?.isApproved ? (
+      {currentUser?.currentCollMember?.isApproved ||
+      currentUser?.currentCollMember?.isAdmin ? (
         <Members round={round} currentUser={currentUser} />
       ) : (
         <PageHero>

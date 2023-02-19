@@ -5,7 +5,7 @@ datasource db {
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch"]
+  previewFeatures = ["fullTextSearch", "interactiveTransactions"]
 
 }
 
@@ -16,15 +16,18 @@ model User {
   name             String?
   verifiedEmail    Boolean        @default(false)
   emailVerified    DateTime?
+  mailUpdates      Boolean        @default(false)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   image            String?
   facebookId       String?        @unique
   googleId         String?        @unique
+  acceptedTermsAt  DateTime?
   groupMemberships GroupMember[]
   collMemberships  RoundMember[]
   emailSettings    EmailSettings?
   Transaction      Transaction[]
+  isSuperAdmin     Boolean?       @default(false)
 }
 
 model EmailSettings {
@@ -53,6 +56,8 @@ model GroupMember {
   discourseApiKey   String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  isApproved        Boolean  @default(true)
+  hasJoined         Boolean  @default(true)
 
   @@unique([groupId, userId])
   @@map("OrgMember")
@@ -107,8 +112,19 @@ model Group {
   groupMembers GroupMember[]
   rounds       Round[]
   discourse    DiscourseConfig?
+  inviteNonce  Int?
 
-  finishedTodos Boolean @default(false)
+  finishedTodos        Boolean @default(false)
+  experimentalFeatures Boolean @default(false)
+
+  stripeCustomerId       String?   @unique
+  stripeSubscriptionId   String?   @unique
+  stripePriceId          String?
+  stripeCurrentPeriodEnd DateTime?
+
+  registrationPolicy RegistrationPolicy? @default(OPEN)
+  visibility         Visibility?         @default(PUBLIC)
+
   @@map("Organization")
 }
 
@@ -129,14 +145,18 @@ model Round {
   currency           String
   visibility         Visibility         @default(PUBLIC)
 
-  maxAmountToBucketPerUser Int?
-  bucketCreationCloses     DateTime?
-  grantingOpens            DateTime?
-  grantingCloses           DateTime?
-  allowStretchGoals        Boolean?
-  requireBucketApproval    Boolean?
-  bucketReviewIsOpen       Boolean?
-  discourseCategoryId      Int?
+  maxAmountToBucketPerUser    Int?
+  bucketCreationCloses        DateTime?
+  grantingOpens               DateTime?
+  grantingCloses              DateTime?
+  allowStretchGoals           Boolean?
+  stripeAccountId             String?
+  directFundingEnabled        Boolean   @default(false)
+  directFundingTerms          String    @default("")
+  bucketReviewIsOpen          Boolean?
+  discourseCategoryId         Int?
+  canCocreatorStartFunding    Boolean?  @default(false)
+  canCocreatorEditOpenBuckets Boolean?  @default(false)
 
   tags       Tag[]
   guidelines Guideline[]
@@ -155,7 +175,7 @@ model Round {
   statusAccount   Account? @relation(fields: [statusAccountId], references: [id])
   statusAccountId String?  @unique
 
-  inviteNonce   Int?
+  inviteNonce Int?
 
   @@unique([groupId, slug])
   @@map("Collection")
@@ -237,23 +257,30 @@ enum AllocationType {
 }
 
 model Bucket {
-  id          String        @id @default(cuid())
-  round       Round         @relation(fields: [roundId], references: [id])
-  roundId     String        @map("collectionId")
-  title       String
-  description String?
-  summary     String?
-  Images      Image[]
-  cocreators  RoundMember[]
-  BudgetItems BudgetItem[]
-  FieldValues FieldValue[]
-  comments    Comment[]
-  approvedAt  DateTime?
-  publishedAt DateTime?
-  fundedAt    DateTime?
-  canceledAt  DateTime?
-  completedAt DateTime?
-  archivedAt  DateTime?
+  id                String        @id @default(cuid())
+  round             Round         @relation(fields: [roundId], references: [id])
+  roundId           String        @map("collectionId")
+  title             String
+  description       String?
+  summary           String?
+  Images            Image[]
+  cocreators        RoundMember[]
+  BudgetItems       BudgetItem[]
+  FieldValues       FieldValue[]
+  comments          Comment[]
+  approvedAt        DateTime?
+  publishedAt       DateTime?
+  fundedAt          DateTime?
+  canceledAt        DateTime?
+  completedAt       DateTime?
+  archivedAt        DateTime?
+  readyForFundingAt DateTime?
+
+  directFundingEnabled        Boolean           @default(false)
+  directFundingType           DirectFundingType @default(DONATION)
+  exchangeDescription         String            @default("")
+  exchangeMinimumContribution Int               @default(0)
+  exchangeVat                 Int?
 
   deleted           Boolean        @default(false)
   discourseTopicId  Int?
@@ -266,6 +293,14 @@ model Bucket {
   statusAccountId   String?        @unique
   outgoingAccount   Account?       @relation(name: "bucketOutgoing", fields: [outgoingAccountId], references: [id])
   outgoingAccountId String?        @unique
+
+  percentageFunded  Float?         @default(0)
+  contributionsCount Int?          @default(0)
+}
+
+enum DirectFundingType {
+  DONATION
+  EXCHANGE
 }
 
 model Image {
@@ -338,6 +373,8 @@ model Allocation {
   amountBefore   Int?
   allocationType AllocationType @default(ADD)
   createdAt      DateTime       @default(now())
+
+  stripeSessionId String?
 }
 
 model Contribution {
@@ -351,6 +388,8 @@ model Contribution {
   amount        Int
   amountBefore  Int?
   createdAt     DateTime    @default(now())
+
+  stripeSessionId String?
 }
 
 model DiscourseConfig {
@@ -387,6 +426,7 @@ model Transaction {
   amount    Int
   createdAt DateTime @default(now())
 
+  // TODO: is the user/userId fields used? can we remove them?
   user          User?        @relation(fields: [userId], references: [id])
   userId        String?
   roundMember   RoundMember? @relation(fields: [roundMemberId], references: [id])
@@ -399,4 +439,14 @@ model Transaction {
   toAccount     Account @relation(name: "to", fields: [toAccountId], references: [id])
   fromAccountId String
   toAccountId   String
+
+  stripeSessionId String?
+}
+
+model SuperAdminSession {
+  id        String    @id               @default(cuid())
+  start     DateTime  @default(now())
+  end       DateTime?
+  duration  Int
+  adminId   String
 }

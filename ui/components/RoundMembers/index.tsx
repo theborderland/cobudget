@@ -10,7 +10,6 @@ import RequestsToJoinTable from "./RequestToJoinTable";
 import SearchBar from "components/RoundMembers/SearchBar";
 import { FormattedMessage, useIntl, FormattedNumber } from "react-intl";
 
-
 export const REQUESTS_TO_JOIN_QUERY = gql`
   query Members($roundId: ID!) {
     requestsToJoinPage: membersPage(roundId: $roundId, isApproved: false) {
@@ -82,7 +81,6 @@ const RoundMembers = ({ round, currentUser }) => {
   const requestsToJoin = data?.requestsToJoinPage?.requestsToJoin || [];
 
   const [searchString, setSearchString] = useState("");
-  
 
   const [, updateMember] = useMutation(UPDATE_MEMBER);
 
@@ -123,7 +121,10 @@ const RoundMembers = ({ round, currentUser }) => {
           />
           {isAdmin && (
             <div className="flex items-center space-x-2">
-              <Button onClick={() => setInviteModalOpen(true)}>
+              <Button
+                onClick={() => setInviteModalOpen(true)}
+                testid="invite-participant-button"
+              >
                 <FormattedMessage defaultMessage="Invite participants" />
               </Button>
               {inviteModalOpen && (
@@ -143,7 +144,6 @@ const RoundMembers = ({ round, currentUser }) => {
           isAdmin={isAdmin}
           searchString={searchString}
         />
-  
       </div>
     </>
   );

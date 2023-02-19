@@ -1,11 +1,13 @@
 import { useState } from "react";
-import thousandSeparator from "utils/thousandSeparator";
 import IconButton from "components/IconButton";
 import { EditIcon } from "components/Icons";
-import { Tooltip } from "react-tippy";
+import Tooltip from "@tippyjs/react";
+
 import { FormattedMessage, FormattedNumber } from "react-intl";
 
 import EditBudgetModal from "./EditBudgetModal";
+import toast from "react-hot-toast";
+import { COCREATORS_CANT_EDIT } from "utils/messages";
 
 const BucketBudget = ({
   bucket,
@@ -14,6 +16,7 @@ const BucketBudget = ({
   allowStretchGoals,
   minGoal,
   maxGoal,
+  isEditingAllowed,
 }) => {
   const { budgetItems } = bucket;
   const [editing, setEditing] = useState(false);
@@ -22,14 +25,20 @@ const BucketBudget = ({
   const nonMonetaryIncome = incomeItems.filter((item) => item.min === 0);
   const expenseItems = budgetItems.filter((item) => item.type === "EXPENSE");
 
+  const handleEdit = () => {
+    if (isEditingAllowed) {
+      setEditing(true);
+    } else {
+      toast.error(COCREATORS_CANT_EDIT);
+    }
+  };
+
   // All the below is in cents so needs to be divided by 100 when rendering
   const expenseTotalMin = minGoal;
   const expenseTotalMax = maxGoal;
   const incomeTotal = monetaryIncome
     .map((e) => e.min)
     .reduce((a, b) => a + b, 0);
-  const goalTotalMin = expenseTotalMin - incomeTotal;
-  const goalTotalMax = expenseTotalMax - incomeTotal;
 
   return (
     <>
@@ -52,8 +61,8 @@ const BucketBudget = ({
             </h2>
             {canEdit && (
               <div>
-                <Tooltip title="Edit budget" position="bottom" size="small">
-                  <IconButton onClick={() => setEditing(true)}>
+                <Tooltip content="Edit budget" placement="bottom" arrow={false}>
+                  <IconButton onClick={handleEdit}>
                     <EditIcon className="h-6 w-6" />
                   </IconButton>
                 </Tooltip>
@@ -63,7 +72,7 @@ const BucketBudget = ({
           {expenseItems.length > 0 && (
             <>
               <h3 className="font-lg font-medium mb-2">
-                <FormattedMessage defaultMessage="Costs" />
+                <FormattedMessage defaultMessage="Requested funding" />
               </h3>
 
               <div className="mb-8 rounded shadow overflow-hidden bg-gray-100">
@@ -71,19 +80,31 @@ const BucketBudget = ({
                   <tbody>
                     {expenseItems.map((budgetItem, i) => (
                       <tr key={i} className="bg-gray-100 even:bg-white">
-                        <td className="px-4 py-2">{budgetItem.description}</td>
-                        <td className="px-4 py-2">
+                        <td
+                          className="px-4 py-2"
+                          data-testid="bucket-cost-description-view"
+                        >
+                          {budgetItem.description}
+                        </td>
+                        <td
+                          className="px-4 py-2"
+                          data-testid="bucket-cost-min-amount-view"
+                        >
                           <FormattedNumber
                             value={budgetItem.min / 100}
                             style="currency"
                             currencyDisplay={"symbol"}
                             currency={currency}
                           />
-                          {budgetItem.max &&
-                            ` - ${thousandSeparator(
-                              budgetItem.max / 100
-                            )}`}{" "}
-                          {currency}
+                          {budgetItem.max && " - "}
+                          {budgetItem.max && (
+                            <FormattedNumber
+                              value={budgetItem.max / 100}
+                              style="currency"
+                              currencyDisplay={"symbol"}
+                              currency={currency}
+                            />
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -101,10 +122,17 @@ const BucketBudget = ({
                           currencyDisplay={"symbol"}
                           currency={currency}
                         />
-                        {expenseTotalMax > 0
-                          ? " - " + thousandSeparator(expenseTotalMax / 100)
-                          : ""}{" "}
-                        {currency}
+                        {expenseTotalMax > 0 ? " - " : ""}
+                        {expenseTotalMax > 0 ? (
+                          <FormattedNumber
+                            value={expenseTotalMax / 100}
+                            style="currency"
+                            currencyDisplay={"symbol"}
+                            currency={currency}
+                          />
+                        ) : (
+                          ""
+                        )}
                       </td>
                     </tr>
                   </tbody>
@@ -117,7 +145,6 @@ const BucketBudget = ({
               <h3 className="font-lg font-medium mb-2">
                 <FormattedMessage defaultMessage="Existing funds" />
               </h3>
-
               <div className="mb-8 rounded shadow overflow-hidden bg-gray-100">
                 <table className="table-fixed w-full">
                   <tbody>
@@ -128,7 +155,12 @@ const BucketBudget = ({
                       >
                         <td className="px-4 py-2">{budgetItem.description}</td>
                         <td className="px-4 py-2">
-                          {thousandSeparator(budgetItem.min / 100)} {currency}
+                          <FormattedNumber
+                            value={budgetItem.min / 100}
+                            style="currency"
+                            currencyDisplay={"symbol"}
+                            currency={currency}
+                          />
                         </td>
                       </tr>
                     ))}
@@ -180,14 +212,11 @@ const BucketBudget = ({
               <div className="font-bold">
                 <FormattedMessage defaultMessage="Funding goal:" />
               </div>
-              <div className="text-base">
-                <FormattedMessage defaultMessage="= Costs - Existing funds" />
-              </div>
             </div>
             <div className="self-end">
               <span className="font-bold">
                 <FormattedNumber
-                  value={goalTotalMin / 100}
+                  value={expenseTotalMin / 100}
                   style="currency"
                   currencyDisplay={"symbol"}
                   currency={currency}
@@ -199,7 +228,7 @@ const BucketBudget = ({
                   (<FormattedMessage defaultMessage="stretch goal:" />{" "}
                   <span className="font-bold">
                     <FormattedNumber
-                      value={goalTotalMin / 100}
+                      value={expenseTotalMax / 100}
                       style="currency"
                       currencyDisplay={"symbol"}
                       currency={currency}
@@ -213,7 +242,8 @@ const BucketBudget = ({
         </div>
       ) : canEdit ? (
         <button
-          onClick={() => setEditing(true)}
+          data-testid="add-bucket-budget-button"
+          onClick={handleEdit}
           className="block w-full h-32 text-gray-600 font-semibold rounded-lg border-3 border-dashed focus:outline-none focus:bg-gray-100 hover:bg-gray-100 mb-4"
         >
           <FormattedMessage defaultMessage="+ Budget" />

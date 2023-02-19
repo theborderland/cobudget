@@ -58,6 +58,30 @@ export const client = (
         },
         updates: {
           Mutation: {
+            startSuperAdminSession(result, args, cache) {
+              cache
+                .inspectFields("Query")
+                .filter((field) => field.fieldName === "getSuperAdminSession")
+                .forEach((field) => {
+                  cache.invalidate(
+                    "Query",
+                    "getSuperAdminSession",
+                    field.arguments
+                  );
+                });
+            },
+            endSuperAdminSession(result, args, cache) {
+              cache
+                .inspectFields("Query")
+                .filter((field) => field.fieldName === "getSuperAdminSession")
+                .forEach((field) => {
+                  cache.invalidate(
+                    "Query",
+                    "getSuperAdminSession",
+                    field.arguments
+                  );
+                });
+            },
             allocate(result: any, args, cache) {
               cache
                 .inspectFields("Query")
@@ -108,29 +132,57 @@ export const client = (
                   });
               }
             },
-            deleteRoundInvitationLink(result, args, cache) {
-              if (result.deleteRoundInvitationLink) {
+            deleteInvitationLink(result, args, cache) {
+              if (result.deleteInvitationLink) {
                 cache
                   .inspectFields("Query")
-                  .filter((field) => field.fieldName === "roundInvitationLink")
+                  .filter((field) => field.fieldName === "invitationLink")
                   .forEach((field) => {
                     cache.invalidate(
                       "Query",
-                      "roundInvitationLink",
+                      "invitationLink",
                       field.arguments
                     );
                   });
               }
             },
-            createRoundInvitationLink(result, args, cache) {
-              if (result.createRoundInvitationLink) {
+            deleteGroupInvitationLink(result, args, cache) {
+              if (result.deleteGroupInvitationLink) {
                 cache
                   .inspectFields("Query")
-                  .filter((field) => field.fieldName === "roundInvitationLink")
+                  .filter((field) => field.fieldName === "groupInvitationLink")
                   .forEach((field) => {
                     cache.invalidate(
                       "Query",
-                      "roundInvitationLink",
+                      "groupInvitationLink",
+                      field.arguments
+                    );
+                  });
+              }
+            },
+            createInvitationLink(result, args, cache) {
+              if (result.createInvitationLink) {
+                cache
+                  .inspectFields("Query")
+                  .filter((field) => field.fieldName === "invitationLink")
+                  .forEach((field) => {
+                    cache.invalidate(
+                      "Query",
+                      "invitationLink",
+                      field.arguments
+                    );
+                  });
+              }
+            },
+            createGroupInvitationLink(result, args, cache) {
+              if (result.createGroupInvitationLink) {
+                cache
+                  .inspectFields("Query")
+                  .filter((field) => field.fieldName === "groupInvitationLink")
+                  .forEach((field) => {
+                    cache.invalidate(
+                      "Query",
+                      "groupInvitationLink",
                       field.arguments
                     );
                   });
@@ -161,9 +213,13 @@ export const client = (
             deleteGroupMember(result: any, { groupMemberId }, cache) {
               cache
                 .inspectFields("Query")
-                .filter((field) => field.fieldName === "orgMembersPage")
+                .filter((field) => field.fieldName === "groupMembersPage")
                 .forEach((field) => {
-                  cache.invalidate("Query", "orgMembersPage", field.arguments);
+                  cache.invalidate(
+                    "Query",
+                    "groupMembersPage",
+                    field.arguments
+                  );
                 });
             },
             updateMember(result: any, { isApproved }, cache) {
@@ -174,6 +230,21 @@ export const client = (
                   .filter((field) => field.fieldName === "membersPage")
                   .forEach((field) => {
                     cache.invalidate("Query", "membersPage", field.arguments);
+                  });
+            },
+
+            updateGroupMember(result: any, { isApproved }, cache) {
+              // only invalidate if isApproved, this means we move a member from the request list to the approvedMembers list
+              if (isApproved)
+                cache
+                  .inspectFields("Query")
+                  .filter((field) => field.fieldName === "groupMembersPage")
+                  .forEach((field) => {
+                    cache.invalidate(
+                      "Query",
+                      "groupMembersPage",
+                      field.arguments
+                    );
                   });
             },
 
@@ -322,6 +393,7 @@ export const client = (
                   );
                 });
             },
+
             addComment(result: any, { content, bucketId }, cache) {
               if (result.addComment) {
                 cache.updateQuery(
@@ -397,7 +469,12 @@ export const client = (
                 cache.updateQuery(
                   {
                     query: GROUP_MEMBERS_QUERY,
-                    variables: { offset: 0, limit: 30 },
+                    variables: {
+                      offset: 0,
+                      limit: 30,
+                      groupId: _args.groupId,
+                      search: "",
+                    },
                   },
                   (data: any) => {
                     return {
@@ -420,11 +497,7 @@ export const client = (
               queryFields
                 .filter((field) => field.fieldName === "membersPage")
                 .forEach((field) => {
-                  cache.invalidate(
-                    "Query",
-                    "membersPage",
-                    field.arguments
-                  );
+                  cache.invalidate("Query", "membersPage", field.arguments);
                 });
             },
             contribute(result, args, cache) {
